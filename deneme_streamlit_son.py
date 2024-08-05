@@ -12,8 +12,8 @@ st.set_page_config(layout='wide', page_title='CosmetriX')
 # Veri setlerini yükle ve birleştir
 @st.cache_data
 def get_data():
-    product_info = pd.read_csv('Desktop/datasets_final_proje/gruptan atılanlar/Sephora/product_info.csv')
-    output_data = pd.read_excel('Desktop/datasets_final_proje/tavsiye2/recproject/output.xlsx')
+    product_info = pd.read_csv('datasets/product_info.csv')
+    output_data = pd.read_excel('datasets/output.xlsx')
     df = pd.merge(product_info, output_data, on='product_id', how='left')
     df = df.loc[:, ~df.columns.duplicated()]
     df = df.rename(columns={'product_name_x': 'product_name', 'primary_category_x': 'primary_category',
