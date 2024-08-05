@@ -330,11 +330,11 @@ with recommender_tab2:
 
     if st.button("Cilt Problemine Göre Öneri Al"):
         if problem:
-            df_products = pd.read_csv("Desktop/datasets_final_proje/tavsiye2/recproject/product_info.csv")
-            chunks = [pd.read_csv(f"Desktop/datasets_final_proje/tavsiye2/recproject/reviews_{i}-{j}.csv") for i, j in
+            df_products = pd.read_csv("datasets/product_info.csv")
+            chunks = [pd.read_csv(f"datasets/reviews_{i}-{j}.csv") for i, j in
                       [(0, 250), (250, 500), (500, 750), (750, 1250), (1250, 'end')]]
             df_reviews = pd.concat(chunks, ignore_index=True)
-            df_skincare = pd.read_excel('Desktop/datasets_final_proje/tavsiye2/recproject/output.xlsx')
+            df_skincare = pd.read_excel('datasets/output.xlsx')
             skincare_products = df_products[df_products['primary_category'] == 'Skincare']
             skincare_products = skincare_products[['product_id', 'product_name', 'price_usd', 'rating', 'loves_count', 'reviews']]
             skincaredf = pd.merge(skincare_products, df_skincare, on='product_id', how='inner')
