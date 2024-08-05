@@ -1,0 +1,7 @@
+pip
+streamlit
+pandas
+plotly
+requests
+bs4
+scikit-learn
