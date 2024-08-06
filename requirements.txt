@@ -5,3 +5,4 @@ plotly
 requests
 bs4
 scikit-learn
+openpyxl
