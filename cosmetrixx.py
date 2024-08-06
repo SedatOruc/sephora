@@ -6,18 +6,14 @@ from sklearn.metrics.pairwise import cosine_similarity
 import difflib
 import re
 import plotly.express as px
-import openpyxl
-
-
-
 
 st.set_page_config(layout='wide', page_title='CosmetriX')
 
 # Veri setlerini yükle ve birleştir
 @st.cache_data
 def get_data():
-    product_info = pd.read_csv('datasets/product_info.csv')
-    output_data = pd.read_excel('datasets/output.xlsx')
+    product_info = pd.read_csv('pythonProject3/product_info.csv')
+    output_data = pd.read_excel('pythonProject3/output.xlsx')
     df = pd.merge(product_info, output_data, on='product_id', how='left')
     df = df.loc[:, ~df.columns.duplicated()]
     df = df.rename(columns={'product_name_x': 'product_name', 'primary_category_x': 'primary_category',
@@ -90,15 +86,19 @@ def get_recommendations(product_name, df, tfidf_matrix, n=10):
 
 
 # Başlık ve açıklama
-st.markdown("<h1 style='color: pink; font-size: 80px;'>CosmetriX</h1>", unsafe_allow_html=True)
+st.markdown("""
+    <div style='text-align: center; margin-right: 30px;'>
+        <h1 style='color: pink; font-size: 80px;'>CosmetriX</h1>
+    </div>
+    """, unsafe_allow_html=True)
 
 # Metin ve resim
 st.markdown("""
     <div style='display: flex; align-items: center;'>
-        <h3 style='font-family: Arial; font-size: 19px; color: #8e44ad; margin-right: 20px; margin-bottom: -20px;'>
-            CİLT SAĞLIĞINA YOLCULUK: Verinin gücüyle kişiselleştirilmiş bakım...
+        <img src='https://lh3.googleusercontent.com/d/1HGbLvTh-Zd0DD5N5AzM4pd82NQRL4KE9=s390' width='300' height='280' style='margin-top: -120px;'>
+          <h3 style='font-family: Arial; font-size: 19px; color: #8e44ad; margin-left: 20px; margin-bottom: -20px;'>
+            CİLT SAĞLIĞINA YOLCULUK: Verinin gücüyle kişiselleştirilmiş bakım....
         </h3>
-        <img src='https://lh3.googleusercontent.com/d/1HGbLvTh-Zd0DD5N5AzM4pd82NQRL4KE9=s390' width='250' height='250' style='margin-top: -120px;'>
     </div>
     """, unsafe_allow_html=True)
 
@@ -158,7 +158,7 @@ with home_tab:
             </ul>
         </p>
         """, unsafe_allow_html=True)
-    col3.image('https://lh3.googleusercontent.com/d/1EKaLxls4et0LJVGrVk2PutNOJy_cSDZY=s400?authuser=0')
+    col3.image('https://lh3.googleusercontent.com/d/1StdekWq6sdEVOUdtEnQ_cIAL1ZbUWAVz=s420?authuser=1')
 
 #ürünler
 with graph_tab:
@@ -251,7 +251,6 @@ with recommender_tab1:
         result = get_recommendations(urun_adi, veriler, tfidf_matrix, n=10)
 
         if result is not None:
-
             # DataFrame'i HTML tablosuna dönüştürme
             html_table = result.to_html(classes='my-table')
 
@@ -287,12 +286,25 @@ with recommender_tab1:
 
             with col2:
                 # Fotoğrafı ekleme
-                st.markdown('<div class="image-container"><img src="https://lh3.googleusercontent.com/d/1DWnLqzPI2s1Dkgg_yZxoi1U5OBQRnnDK=s480?authuser=0" alt="Ürün Görseli" width="500"></div>', unsafe_allow_html=True)
-
-
+                st.image('https://lh3.googleusercontent.com/d/1DWnLqzPI2s1Dkgg_yZxoi1U5OBQRnnDK=s480?authuser=0', width=600)
 
 
 # Yeni Tavsiye Sistemi: Cilt Problemine Göre Öneri Sistemi
+def calculate_new_score(row, min_reviews, max_reviews, min_loves, max_loves):
+    # Min-Max Normalizasyonu
+    normalized_reviews = (row['reviews'] - min_reviews) / (max_reviews - min_reviews)
+    normalized_loves = 1 + 4 * (row['loves_count'] - min_loves) / (max_loves - min_loves)
+
+    # Yeni Skoru Hesaplama (rating kolonuna daha fazla ağırlık verilerek)
+    raw_score = row['rating'] * 2 * (1 + normalized_reviews) * normalized_loves
+
+    return raw_score
+
+# Skoru 1 ile 5 arasında ölçeklendirme fonksiyonu
+def scale_score(raw_score, min_score, max_score):
+    return 1 + 4 * (raw_score - min_score) / (max_score - min_score)
+
+# Yeni skoru hesaplayıp veri setine ekleyen fonksiyon
 def normalize_and_calculate_scores(df):
     min_reviews = df['reviews'].min()
     max_reviews = df['reviews'].max()
@@ -308,23 +320,26 @@ def normalize_and_calculate_scores(df):
 
     return df
 
-def calculate_new_score(row, min_reviews, max_reviews, min_loves, max_loves):
-    normalized_reviews = (row['reviews'] - min_reviews) / (max_reviews - min_reviews)
-    normalized_loves = 1 + 4 * (row['loves_count'] - min_loves) / (max_loves - min_loves)
-
-    raw_score = row['rating'] * 2 * (1 + normalized_reviews) * normalized_loves
-    return raw_score
-
-def scale_score(raw_score, min_score, max_score):
-    return 1 + 4 * (raw_score - min_score) / (max_score - min_score)
-
-def get_recommendations_by_problem(problem, tfidf_vectorizer, tfidf_matrix, skincaredf, top_n=15):
+# Cilt problemi girdiğinde benzer ürünleri önerme fonksiyonu
+def get_recommendations_by_problem(problem, tfidf_vectorizer, tfidf_matrix, skincaredf, cosine_sim=None, top_n=15):
+    # Kullanıcının girdiği cilt problemine göre TF-IDF vektörünü hesapla
     problem_tfidf = tfidf_vectorizer.transform([problem])
+
+    # Problemle tüm ürünler arasındaki benzerlik puanlarını al
     sim_scores = cosine_similarity(problem_tfidf, tfidf_matrix).flatten()
+
+    # Benzerlik puanlarına göre ürünleri sırala
     sim_scores_indices = sim_scores.argsort()[::-1][:top_n]
+
+    # En benzer ürünleri al
     recommended_products = skincaredf.iloc[sim_scores_indices].copy()
+
+    # Yeni skoru hesaplama ve veri setine ekleme
     recommended_products = normalize_and_calculate_scores(recommended_products)
+
+    # Yeni skora göre sıralama yap
     recommended_products = recommended_products.sort_values(by='new_score', ascending=False)
+
     return recommended_products[['product_name_x', 'price_usd', 'rating', 'reviews', 'loves_count', 'problems']]
 
 with recommender_tab2:
@@ -334,62 +349,88 @@ with recommender_tab2:
 
     if st.button("Cilt Problemine Göre Öneri Al"):
         if problem:
-            df_products = pd.read_csv("datasets/product_info.csv")
-            chunks = [pd.read_csv(f"datasets/reviews_{i}-{j}.csv") for i, j in
-                      [(0, 250), (250, 500), (500, 750), (750, 1250), (1250, 'end')]]
-            df_reviews = pd.concat(chunks, ignore_index=True)
-            df_skincare = pd.read_excel('datasets/output.xlsx')
-            skincare_products = df_products[df_products['primary_category'] == 'Skincare']
-            skincare_products = skincare_products[['product_id', 'product_name', 'price_usd', 'rating', 'loves_count', 'reviews']]
-            skincaredf = pd.merge(skincare_products, df_skincare, on='product_id', how='inner')
-            skincaredf = skincaredf.drop(columns=["primary_category", "secondary_category", "product_name_y", "tertiary_category", "category", "Unnamed: 9"])
+            skincaredf = pd.read_csv('pythonProject3/skincaredf.csv')
+
+            # Eksik değerleri dolduralım
             skincaredf[['problem2', 'problem3']] = skincaredf[['problem2', 'problem3']].fillna('')
+
+            # Cilt problemlerini birleştirerek yeni bir sütun oluşturma
             skincaredf['problems'] = skincaredf[['problem1', 'problem2', 'problem3']].agg(','.join, axis=1)
-            skincare_reviews = pd.merge(df_reviews, skincaredf, on='product_id', how='inner')
-            skincare_reviews = skincare_reviews.drop(columns=['Unnamed: 0', 'author_id', 'helpfulness',
-                                                               'total_feedback_count', 'total_neg_feedback_count',
-                                                               'total_pos_feedback_count', 'submission_time',
-                                                               'review_title', 'skin_tone', 'product_name_x', 'price_usd_x', 'brand_name', 'rating_y'])
-            skin_type_counts = skincare_reviews.groupby(['product_id', 'skin_type']).size().unstack(fill_value=0)
-            skincaredf = pd.merge(skincaredf, skin_type_counts, on='product_id', how='inner')
-            average_ratings = skincare_reviews.groupby('product_id')['rating_x'].mean().reset_index()
-            skincaredf = pd.merge(skincaredf, average_ratings, on='product_id', how='inner')
-            skin_type_ratings = skincare_reviews.groupby(['product_id', 'skin_type'])['rating_x'].mean().unstack(fill_value=0)
-            skincaredf = pd.merge(skincaredf, skin_type_ratings, on='product_id', how='left', suffixes=('', '_skin_type'))
 
-            etiket_gruplari = {
-                'Nemlendirme-Cilt Kuruluğu': ['Cilt kuruluğu', 'Nemlendirme', 'Hızlı nemlendirme', 'Cilt Kuruluğu', 'Nem bombası', 'Dudak nemlendirme', 'Besleyici', 'Kuru cilt', 'Dengeleyici nemlendirici'],
-                'Elastikiyet ve Sıkılaştırma': ['Cilt elastikiyeti kaybı', 'Sıkılaştırıcı serum', 'Sıkılaştırma', 'Cilt sıkılaştırma', 'Cilt Elastikiyeti Kaybı', 'Kollajen desteği', 'Yeniden yapılandırma ve aydınlatma', 'Kolajen desteği', 'Kolajen'],
-                'Göz Altı Problemleri': ['Göz altı torbaları', 'Göz altı sorunları', 'Göz Altı Sorunları'],
-                'Pigmentasyon ve Koyu Lekeler': ['Pigmentasyon sorunları (Hiperpigmentasyon)', 'Hiperpigmentasyon (Koyu lekeler)', 'Koyu lekeler', 'Pigmentasyon Sorunları', 'Pigmentasyon sorunları (Koyu lekeler)', 'Hiperpigmentasyon', 'Toner', 'Bronzlaştırma hatalarını düzeltme'],
-                'Akne-Sivilce': ['Sivilce (Akne)', 'Sivilce (Kistik akne)', 'Akne', 'Akne tedavisi', 'Sivilce', 'Sivilce izleri', 'Salisilik asit'],
-                'Aydınlatma ve Beyazlatma': ['Cilt aydınlatma', 'Aydınlatıcı nemlendirici', 'Aydınlatıcı serum', 'Aydınlatıcı yağ', 'Beyazlatma', 'Aydınlatma'],
-                'Siyah Nokta - Peeling': ['Temizleme', 'Eksfoliasyon', 'Peeling', 'Gözenek temizleme', 'Siyah nokta temizleme', 'Cilt temizliği', 'Gözenek temizliği', 'Temizleme uçları', 'Siyah nokta', 'Gözenek tıkanıklığı', 'Gözenek Sorunları', 'Eksfoliasyon ve dolgunlaştırma'],
-                'Gece Bakımı ve Ürünleri': ['Gece kremi', 'Gece serumu', 'Gece bakımı', 'Gece maskesi', 'Gece tedavisi', 'Uyku desteği', 'Uyku kalitesi'],
-                'Güneş Koruması ve UV Hasarı': ['Güneş koruması', 'UV hasarı onarımı', 'Güneş koruma'],
-                'Cilt Hassasiyeti ve Kızarıklık': ['Cilt hassasiyeti (Kızarıklık', 'Kızarıklık', 'Cilt hassasiyeti'],
-                'Maskeler': ['Dengeleyici maske', 'Maske', 'Yüz maskesi', 'Maske tedavisi', 'Maske uygulama'],
-                'Cilt Yenileme ve Onarım': ['Cilt yenileme', 'Yenileyici terapi', 'Yenileme', 'Onarım', 'Bariyer güçlendirme', 'Bariyer onarımı'],
-                'Soluk ve Pürüzlü Cilt Problemleri': ['Dolgunlaştırma', 'Cilt parlaklığı', 'Canlandırma', 'Pürüzsüzleştirme'],
-                'Antioksidan ve Koruma': ['Antioksidan koruma', 'Antioksidan', 'Koruyucu'],
-                'Yağ Kontrolü': ['Yağ kontrolü', 'Yağlı cilt'],
-                'Tüy Sorunları': ['Tüy temizleme', 'Tüy alma', 'Tıraş'],
-                'Detoks ve Arındırma': ['Detoks', 'Detox', 'Karaciğer detoksu', 'Arındırma'],
-                'Sindirim ve Metabolizma Sorunları': ['Sindirim sağlığı', 'Sindirim desteği', 'Metabolizma artırma'],
-                'Kadın Sağlığı': ['Vajinal sağlık', 'Menopoz desteği', 'PMS desteği', 'Prenatal destek'],
-                'Enerji ve Stres Sorunları': ['Enerji artırma', 'Stres yönetimi', 'Adrenal yorgunluk'],
-                'Takviye-Sağlık Destekleri': ['Bağışıklık desteği', 'Omega-3 desteği', 'Adaptogen desteği', 'Beyin sağlığı', 'Vitamin ve takviye saklama'],
-                'Genel Sağlık': ['Genel cilt sağlığı', 'Su tüketimi', 'Saç ve cilt sağlığı', 'Yorgunluk karşıtı', 'Rahatlama'],
-                'Yaşlanma-Kırışıklık': ['Yaşlanma karşıtı', 'Kırışıklıklar (İnce çizgiler)', 'Boyun kırışıklıkları', 'Kırışıklıklar', 'İnce çizgiler', 'Anti-aging']
-            }
+            # TF-IDF hesaplaması için metin alanını oluşturma
+            skincaredf['combined_problems'] = skincaredf[['problem1', 'problem2', 'problem3']].fillna('').agg(' '.join,
+                                                                                                              axis=1)
 
-            for yeni_etiket, eski_etiketler in etiket_gruplari.items():
-                skincaredf['problem1'] = skincaredf['problem1'].replace(eski_etiketler, yeni_etiket)
-
-            skincaredf['combined_problems'] = skincaredf[['problem1', 'problem2', 'problem3']].fillna('').agg(' '.join, axis=1)
+            # TF-IDF hesaplaması
             tfidf_vectorizer = TfidfVectorizer()
             tfidf_matrix = tfidf_vectorizer.fit_transform(skincaredf['combined_problems'])
+
+            # Cosine similarity hesaplaması
             cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
+
+
+            # Yeni puan hesaplama fonksiyonu
+            def calculate_new_score(row, min_reviews, max_reviews, min_loves, max_loves):
+                # Min-Max Normalizasyonu
+                normalized_reviews = (row['reviews'] - min_reviews) / (max_reviews - min_reviews)
+                normalized_loves = 1 + 4 * (row['loves_count'] - min_loves) / (max_loves - min_loves)
+
+                # Yeni Skoru Hesaplama (rating kolonuna daha fazla ağırlık verilerek)
+                raw_score = row['rating'] * 2 * (1 + normalized_reviews) * normalized_loves
+
+                return raw_score
+
+
+            # Skoru 1 ile 5 arasında ölçeklendirme fonksiyonu
+            def scale_score(raw_score, min_score, max_score):
+                return 1 + 4 * (raw_score - min_score) / (max_score - min_score)
+
+
+            # Yeni skoru hesaplayıp veri setine ekleyen fonksiyon
+            def normalize_and_calculate_scores(df):
+                min_reviews = df['reviews'].min()
+                max_reviews = df['reviews'].max()
+                min_loves = df['loves_count'].min()
+                max_loves = df['loves_count'].max()
+
+                df['raw_score'] = df.apply(calculate_new_score, axis=1,
+                                           args=(min_reviews, max_reviews, min_loves, max_loves))
+
+                min_score = df['raw_score'].min()
+                max_score = df['raw_score'].max()
+
+                df['new_score'] = df['raw_score'].apply(scale_score, args=(min_score, max_score))
+
+                return df
+
+
+            # Cilt problemi girdiğinde benzer ürünleri önerme fonksiyonu
+            def get_recommendations_by_problem(problem, tfidf_vectorizer, tfidf_matrix, skincaredf, cosine_sim=None,
+                                               top_n=15):
+                # Kullanıcının girdiği cilt problemine göre TF-IDF vektörünü hesapla
+                problem_tfidf = tfidf_vectorizer.transform([problem])
+
+                # Problemle tüm ürünler arasındaki benzerlik puanlarını al
+                sim_scores = cosine_similarity(problem_tfidf, tfidf_matrix).flatten()
+
+                # Benzerlik puanlarına göre ürünleri sırala
+                sim_scores_indices = sim_scores.argsort()[::-1][:top_n]
+
+                # En benzer ürünleri al
+                recommended_products = skincaredf.iloc[sim_scores_indices].copy()
+
+                # Yeni skoru hesaplama ve veri setine ekleme
+                recommended_products = normalize_and_calculate_scores(recommended_products)
+
+                # Yeni skora göre sıralama yap
+                recommended_products = recommended_products.sort_values(by='new_score', ascending=False)
+
+                return recommended_products[
+                    ['product_name_x', 'price_usd', 'rating', 'reviews', 'loves_count', 'problems']]
+
+
+            # Örnek olarak bir cilt problemi vererek benzer ürünleri bulma
+            problem = 'Akne'
             recommended_products = get_recommendations_by_problem(problem, tfidf_vectorizer, tfidf_matrix, skincaredf)
 
             if recommended_products is not None:
@@ -415,7 +456,7 @@ with recommender_tab2:
 
                 with col2:
                     # Resmi ikinci sütunda göster
-                    st.image("https://lh3.googleusercontent.com/d/1Cv0AkjZn-aiD64aknCmMnHQGbtjJ6oBR=s400?authuser=0",
+                    st.image("https://lh3.googleusercontent.com/d/1tM21L2bG4vVbi8PnZt4XS7sppKY7ygHC=s520?authuser=1",
                              use_column_width=True)  # Dosya yolunu güncelleyin
             else:
                 st.write("Lütfen bir cilt problemi girin.")
