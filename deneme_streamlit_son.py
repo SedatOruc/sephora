@@ -30,7 +30,7 @@ veriler = get_data()
 def clean_text(text):
     if isinstance(text, str):
         text = text.lower()
-        text = re.sub(r'[^a-zA-Z0-9çğüşıöğü\s]', '', text)  # Türkçe karakterleri korur
+        text = re.sub(r'[^a-zA-Z0-9çğüşıö\s]', '', text)  # Türkçe karakterleri korur
         text = re.sub(r'\s+', ' ', text).strip()
     return text
 
