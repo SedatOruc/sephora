@@ -6,6 +6,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 import difflib
 import re
 import plotly.express as px
+import openpyxl
+
 
 st.set_page_config(layout='wide', page_title='CosmetriX')
 
